@@ -1,5 +1,5 @@
 {
-  "name": "zennquotes-server",
+  "name": "zennquotes",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy --minify"

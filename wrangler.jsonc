@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "zennquotes-server",
+  "name": "zennquotes",
   "main": "src/index.ts",
   "compatibility_date": "2025-04-12",
   "compatibility_flags": [
