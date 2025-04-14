@@ -5,38 +5,57 @@ import { Resvg, initWasm } from '@resvg/resvg-wasm'; // @resvg/resvg-wasm を使
 import wasmModule from '../vender/resvg.wasm';
 
 // --- リソース読み込みとキャッシュ ---
-let fontJPCache: ArrayBuffer | null = null; // Noto Sans JP
+let fontSansCache: ArrayBuffer | null = null; // Noto Sans JP (通常テキスト用)
+let fontSerifCache: ArrayBuffer | null = null; // Noto Serif JP (引用文用)
+let fontLogoCache: ArrayBuffer | null = null; // Inter (ロゴ用)
 let wasmInitialized = false;
 
-const FONT_JP_KEY = 'assets/NotoSansJP-Regular.ttf';
+const FONT_SANS_KEY = 'assets/NotoSansJP-Regular.ttf';
+const FONT_SERIF_KEY = 'assets/NotoSerifJP-Regular.ttf'; // ★★★ 明朝体フォントキー ★★★
+const FONT_LOGO_KEY = 'assets/Inter_28pt-Regular.ttf'; // ★★★ ロゴ用フォントキー ★★★
 
-async function loadFont(r2Bucket: R2Bucket): Promise<ArrayBuffer> {
-  // Noto Sans JP の読み込みとキャッシュ
-  if (!fontJPCache) {
-    console.log(`Fetching font from R2: ${FONT_JP_KEY}`);
-    const fontObject = await r2Bucket.get(FONT_JP_KEY);
-    if (!fontObject) {
-      throw new Error(`Font file not found in R2: ${FONT_JP_KEY}`);
-    }
-    fontJPCache = await fontObject.arrayBuffer();
+// ★★★ 3つのフォントを読み込むように修正 ★★★
+async function loadResources(r2Bucket: R2Bucket): Promise<{ fontSans: ArrayBuffer; fontSerif: ArrayBuffer; fontLogo: ArrayBuffer }> {
+  // Noto Sans JP
+  if (!fontSansCache) {
+    console.log(`Fetching font from R2: ${FONT_SANS_KEY}`);
+    const fontObject = await r2Bucket.get(FONT_SANS_KEY);
+    if (!fontObject) throw new Error(`Font file not found in R2: ${FONT_SANS_KEY}`);
+    fontSansCache = await fontObject.arrayBuffer();
     console.log('Noto Sans JP data loaded and cached.');
   }
 
-  if (!fontJPCache) {
-    throw new Error('Failed to load font data from cache.');
+  // Noto Serif JP
+  if (!fontSerifCache) {
+    console.log(`Fetching font from R2: ${FONT_SERIF_KEY}`);
+    const fontObject = await r2Bucket.get(FONT_SERIF_KEY);
+    if (!fontObject) throw new Error(`Font file not found in R2: ${FONT_SERIF_KEY}`);
+    fontSerifCache = await fontObject.arrayBuffer();
+    console.log('Noto Serif JP data loaded and cached.');
   }
 
-  return fontJPCache;
+  // Inter
+  if (!fontLogoCache) {
+    console.log(`Fetching font from R2: ${FONT_LOGO_KEY}`);
+    const fontObject = await r2Bucket.get(FONT_LOGO_KEY);
+    if (!fontObject) throw new Error(`Font file not found in R2: ${FONT_LOGO_KEY}`);
+    fontLogoCache = await fontObject.arrayBuffer();
+    console.log('Inter font data loaded and cached.');
+  }
+
+  if (!fontSansCache || !fontSerifCache || !fontLogoCache) {
+    throw new Error('Failed to load font resources from cache.');
+  }
+
+  return { fontSans: fontSansCache, fontSerif: fontSerifCache, fontLogo: fontLogoCache };
 }
 
-// --- Twemoji 関連ヘルパー ---
+// --- Twemoji 関連ヘルパー (変更なし) ---
 const UNKNOWN_EMOJI_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" fill="#CCC"><rect width="36" height="36"/></svg>`;
 
 function getIconCode(text: string): string {
   const codePoint = text.codePointAt(0);
-  if (codePoint) {
-    return codePoint.toString(16);
-  }
+  if (codePoint) return codePoint.toString(16);
   return '';
 }
 
@@ -45,22 +64,17 @@ async function loadAdditionalAsset(_code: string, text: string): Promise<string>
     console.warn(`loadAdditionalAsset called with unexpected code: ${_code}`);
     return `data:image/svg+xml;base64,${btoa(UNKNOWN_EMOJI_SVG)}`;
   }
-
   const code = getIconCode(text);
   if (!code) {
     console.warn(`Could not get code point for emoji: ${text}`);
     return `data:image/svg+xml;base64,${btoa(UNKNOWN_EMOJI_SVG)}`;
   }
-
   const version = '15.1.0';
   let emojiSvg;
   try {
     const url = `https://cdnjs.cloudflare.com/ajax/libs/twemoji/${version}/svg/${code.toLowerCase()}.svg`;
-    console.log(`Fetching Twemoji: ${url}`);
     const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch Twemoji SVG: ${response.statusText}`);
-    }
+    if (!response.ok) throw new Error(`Failed to fetch Twemoji SVG: ${response.statusText}`);
     emojiSvg = await response.text();
   } catch (e) {
     console.error(`Error fetching Twemoji for ${text} (${code}):`, e);
@@ -69,19 +83,14 @@ async function loadAdditionalAsset(_code: string, text: string): Promise<string>
   return `data:image/svg+xml;base64,${btoa(emojiSvg)}`;
 }
 
-
 /**
  * 指定されたURLからメタデータ(タイトル、著者名、著者アイコンURL)を抽出する
- * @param url Zennの記事URL
- * @returns { title: string, author: string, authorAvatarUrl: string | null }
+ * (変更なし)
  */
-// ★★★ 戻り値の型を変更 ★★★
 export async function fetchMetadata(url: string): Promise<{ title: string; author: string; authorAvatarUrl: string | null }> {
   try {
     const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch URL: ${response.statusText}`);
-    }
+    if (!response.ok) throw new Error(`Failed to fetch URL: ${response.statusText}`);
     const html = await response.text();
 
     // ★★★ __NEXT_DATA__ から JSON を抽出 ★★★
@@ -91,31 +100,19 @@ export async function fetchMetadata(url: string): Promise<{ title: string; autho
     }
 
     const nextData = JSON.parse(nextDataMatch[1]);
-
-    // ★★★ JSON から情報を取得 ★★★
     const articleTitle = nextData?.props?.pageProps?.article?.title;
-    const authorName = nextData?.props?.pageProps?.user?.username; // username を使う
+    const authorName = nextData?.props?.pageProps?.user?.username;
     const authorAvatar = nextData?.props?.pageProps?.user?.avatarUrl;
-
-    if (!articleTitle || !authorName) {
-      throw new Error('Could not extract title or author from __NEXT_DATA__.');
-    }
-
+    if (!articleTitle || !authorName) throw new Error('Could not extract title or author from __NEXT_DATA__.');
     const sanitize = (str: string) => str.replace(/</g, '<').replace(/>/g, '>');
-
     return {
       title: sanitize(articleTitle),
       author: sanitize(authorName),
-      authorAvatarUrl: authorAvatar || null, // avatarUrl がなければ null
+      authorAvatarUrl: authorAvatar || null,
     };
   } catch (error) {
     console.error('Error fetching or parsing metadata:', error);
-    // エラー時はデフォルト値を返す
-    return {
-      title: 'タイトル取得エラー',
-      author: '著者取得エラー',
-      authorAvatarUrl: null,
-    };
+    return { title: 'タイトル取得エラー', author: '著者取得エラー', authorAvatarUrl: null };
   }
 }
 
@@ -128,16 +125,15 @@ export async function fetchMetadata(url: string): Promise<{ title: string; autho
  * @param r2Bucket R2 バケットオブジェクト (フォント読み込み用)
  * @returns PNG画像のUint8Array
  */
-// ★★★ 引数に authorAvatarUrl を追加 ★★★
 export async function generateOgpImage(
   quote: string,
   title: string,
   author: string,
-  authorAvatarUrl: string | null, // 追加
+  authorAvatarUrl: string | null,
   r2Bucket: R2Bucket
 ): Promise<Uint8Array> {
   // R2 からフォントデータを読み込む
-  const fontJP = await loadFont(r2Bucket);
+  const { fontSans, fontSerif, fontLogo } = await loadResources(r2Bucket); // ★★★ 3つのフォントを取得 ★★★
 
   // WASM の初期化 (初回のみ実行)
   if (!wasmInitialized) {
@@ -149,113 +145,233 @@ export async function generateOgpImage(
 
   // SatoriでSVGを生成
   const svg = await satori(
-    // JSXライクな構文でテンプレートを記述
+    // ★★★ 新しいデザイン仕様に基づくテンプレート ★★★
     {
-      type: 'div',
+      type: 'div', // 全体コンテナ
       props: {
         style: {
           display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
           width: 1200,
-          height: 630, // ★★★ 高さを 630 に戻す ★★★
-          padding: '60px',
-          backgroundColor: '#f8f8f8',
-          border: '1px solid #e0e0e0',
+          height: 1200,
+          backgroundColor: '#f0f8ff', // AliceBlue 背景
+          // 枠線 (単色で代替)
+          border: '10px solid #3ea8ff', // Zenn ブルーに近い色
           borderRadius: '10px',
-          fontFamily: '"Noto Sans JP"',
+          boxSizing: 'border-box', // border を含めてサイズ計算
         },
         children: [
-          // 上部: 引用文
           {
-            type: 'div',
-            props: {
-              style: {
-                fontSize: '48px',
-                color: '#333',
-                lineHeight: 1.6,
-                // ★★★ 下部の高さ確保のため、引用文の高さを制限 (例) ★★★
-                maxHeight: '350px', // 高さを調整
-                overflow: 'hidden',
-                // display: '-webkit-box', // line-clamp は使わず overflow で隠す
-                // webkitBoxOrient: 'vertical',
-                // webkitLineClamp: 5,
-              },
-              children: `“${quote}”`,
-            },
-          },
-          // 下部: タイトルと著者情報
-          {
-            type: 'div',
+            type: 'div', // 内側コンテナ (パディング用)
             props: {
               style: {
                 display: 'flex',
-                // ★★★ 横並びにしてアイコンとテキストを配置 ★★★
-                flexDirection: 'row',
-                justifyContent: 'space-between', // 両端揃え
-                alignItems: 'flex-end', // 下揃え
-                borderTop: '1px solid #eee',
-                paddingTop: '30px',
-                width: '100%', // 幅を 100% に
+                flexDirection: 'column',
+                justifyContent: 'space-between', // 上下に要素を配置
+                width: '100%',
+                height: '100%',
+                padding: '40px', // 内側のパディング
+                backgroundColor: '#ffffff', // 白背景
+                borderRadius: '5px', // 内側の角丸 (任意)
+                boxSizing: 'border-box',
               },
               children: [
-                // 左側: タイトルと著者名
+                // --- 上部: 引用エリア ---
                 {
                   type: 'div',
                   props: {
                     style: {
                       display: 'flex',
                       flexDirection: 'column',
-                      alignItems: 'flex-start', // 左揃え
-                      // ★★★ 幅を制限して折り返すようにする ★★★
-                      maxWidth: authorAvatarUrl ? '880px' : '100%', // アイコンがある場合は幅を狭める
+                      alignItems: 'center', // 中央寄せ
                     },
                     children: [
+                      // 左上の引用符
                       {
                         type: 'div',
                         props: {
                           style: {
-                            fontSize: '40px',
-                            fontWeight: 'bold',
-                            color: '#111',
-                            marginBottom: '15px',
-                            // ★★★ 折り返し設定 ★★★
-                            // maxWidth: '100%',
-                            // overflow: 'hidden',
-                            // textOverflow: 'ellipsis',
-                            // whiteSpace: 'nowrap', // 折り返しのため削除
-                            lineHeight: 1.3, // 行間調整
+                            fontSize: '100px', // 大きなサイズ
+                            color: '#cccccc', // 薄いグレー
+                            position: 'absolute', // 絶対配置
+                            left: '40px', // 位置調整 (パディング考慮)
+                            top: '20px', // 位置調整
+                            fontFamily: '"Noto Serif JP"', // 明朝体
+                            lineHeight: 1,
                           },
-                          children: title,
+                          children: '“',
                         },
                       },
+                      // 引用文テキスト
                       {
                         type: 'div',
                         props: {
                           style: {
-                            fontSize: '32px',
-                            color: '#666',
+                            fontSize: '38px', // 少し小さめ
+                            color: '#4a5568', // ブルーグレー系
+                            lineHeight: 1.7, // 行間広め
+                            marginTop: '60px', // 引用符とのスペース
+                            textAlign: 'center',
+                            fontFamily: '"Noto Serif JP"', // 明朝体
+                            // 長文対応 (高さ制限と overflow hidden)
+                            maxHeight: '280px', // 高さを調整
+                            overflow: 'hidden',
                           },
-                          children: `by ${author}`,
+                          children: quote,
                         },
                       },
-                    ]
-                  }
-                },
-                // ★★★ 右側: 著者アイコン (存在する場合) ★★★
-                authorAvatarUrl ? {
-                  type: 'img',
-                  props: {
-                    src: authorAvatarUrl,
-                    style: {
-                      width: '80px', // アイコンサイズ調整
-                      height: '80px',
-                      borderRadius: '50%', // 円形にする
-                      marginLeft: '30px', // 左側のテキストとの間隔
-                      border: '2px solid #ddd', // 枠線 (任意)
-                    },
+                      // 右下の引用符 (任意)
+                      {
+                        type: 'div',
+                        props: {
+                          style: {
+                            fontSize: '100px',
+                            color: '#cccccc',
+                            position: 'absolute',
+                            right: '40px',
+                            bottom: '200px', // 下からの位置調整 (著者情報エリアの上あたり)
+                            fontFamily: '"Noto Serif JP"',
+                            lineHeight: 1,
+                          },
+                          children: '”',
+                        },
+                      },
+                      // 罫線
+                      {
+                        type: 'div',
+                        props: {
+                          style: {
+                            width: '150px',
+                            height: '2px',
+                            backgroundColor: '#e2e8f0', // 薄いグレー
+                            marginTop: '30px', // テキストとの間隔
+                          },
+                        },
+                      },
+                    ],
                   },
-                } : null, // アイコン URL がなければ何も表示しない
+                },
+                // --- 下部: 著者情報 & ロゴエリア ---
+                {
+                  type: 'div',
+                  props: {
+                    style: {
+                      display: 'flex',
+                      justifyContent: 'space-between', // 両端揃え
+                      alignItems: 'flex-end', // 下揃え
+                      width: '100%',
+                      marginTop: '30px', // 罫線との間隔
+                      fontFamily: '"Noto Sans JP"', // 基本フォント
+                    },
+                    children: [
+                      // 左側: 著者情報
+                      {
+                        type: 'div',
+                        props: {
+                          style: {
+                            display: 'flex',
+                            alignItems: 'center', // 縦中央揃え
+                          },
+                          children: [
+                            // アバター画像
+                            authorAvatarUrl ? {
+                              type: 'img',
+                              props: {
+                                src: authorAvatarUrl,
+                                style: {
+                                  width: '48px', // サイズ調整
+                                  height: '48px',
+                                  borderRadius: '50%',
+                                  marginRight: '15px', // 名前との間隔
+                                  border: '1px solid #eee',
+                                },
+                              },
+                            } : null,
+                            // 名前とタイトル
+                            {
+                              type: 'div',
+                              props: {
+                                style: {
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                },
+                                children: [
+                                  { // 著者名
+                                    type: 'div',
+                                    props: {
+                                      style: {
+                                        fontSize: '24px', // 中サイズ
+                                        fontWeight: 'bold', // 太字
+                                        color: '#2d3748', // やや濃いグレー
+                                        lineHeight: 1.3,
+                                      },
+                                      children: author,
+                                    },
+                                  },
+                                  { // 記事タイトル
+                                    type: 'div',
+                                    props: {
+                                      style: {
+                                        fontSize: '20px', // 小サイズ
+                                        color: '#718096', // 薄めのグレー
+                                        lineHeight: 1.3,
+                                        // 長い場合の省略表示 (任意)
+                                        // maxWidth: '600px',
+                                        // overflow: 'hidden',
+                                        // textOverflow: 'ellipsis',
+                                        // whiteSpace: 'nowrap',
+                                      },
+                                      children: title,
+                                    },
+                                  },
+                                ],
+                              },
+                            },
+                          ],
+                        },
+                      },
+                      // 右側: ロゴとサービス名
+                      {
+                        type: 'div',
+                        props: {
+                          style: {
+                            display: 'flex',
+                            alignItems: 'center',
+                            fontFamily: '"Inter"', // ロゴ用フォント
+                          },
+                          children: [
+                            // ロゴアイコン (テキストで代替)
+                            {
+                              type: 'div',
+                              props: {
+                                style: {
+                                  fontSize: '30px',
+                                  fontWeight: 'bold',
+                                  color: '#3ea8ff', // Zenn ブルー
+                                  marginRight: '8px',
+                                  // 引用符っぽく見せる (調整が必要)
+                                  transform: 'scaleY(0.8) translateY(-2px)',
+                                },
+                                children: '❝', // または ”
+                              },
+                            },
+                            // サービス名
+                            {
+                              type: 'div',
+                              props: {
+                                style: {
+                                  fontSize: '24px',
+                                  fontWeight: '600', // SemiBold
+                                  color: '#4a5568',
+                                },
+                                children: 'zennquotes',
+                              },
+                            },
+                          ],
+                        },
+                      },
+                    ],
+                  },
+                },
               ],
             },
           },
@@ -265,13 +381,32 @@ export async function generateOgpImage(
     // Satoriの設定
     {
       width: 1200,
-      height: 630, // ★★★ 高さを 630 に戻す ★★★
+      height: 630, // ★★★ OGP サイズ ★★★
       loadAdditionalAsset: loadAdditionalAsset,
       fonts: [
+        // ★★★ 3つのフォントを登録 ★★★
         {
           name: 'Noto Sans JP',
-          data: fontJP,
+          data: fontSans,
           weight: 400,
+          style: 'normal',
+        },
+        {
+          name: 'Noto Serif JP',
+          data: fontSerif,
+          weight: 400,
+          style: 'normal',
+        },
+        {
+          name: 'Inter', // CSS の fontFamily と合わせる
+          data: fontLogo,
+          weight: 400, // Regular
+          style: 'normal',
+        },
+        { // Inter の SemiBold も使う場合は追加
+          name: 'Inter',
+          data: fontLogo, // 同じファイルで代用 (必要なら Bold/SemiBold ファイルを別途用意)
+          weight: 600,
           style: 'normal',
         },
       ],
