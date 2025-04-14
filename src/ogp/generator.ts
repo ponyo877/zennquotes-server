@@ -1,8 +1,38 @@
 import satori from 'satori';
-import { Resvg } from '@resvg/resvg-js';
+// Resvg をインポート
+import { Resvg, initWasm } from '@resvg/resvg-wasm'; // @resvg/resvg-wasm を使用
+// ★★★ WASM モジュールを直接インポート (wrangler.jsonc の rules で処理) ★★★
+import wasmModule from '../vender/resvg.wasm';
 
-// TODO: フォントデータを読み込む (例: Noto Sans JP)
-// const fontData = fs.readFileSync('./assets/NotoSansJP-Regular.otf');
+// --- リソース読み込みとキャッシュ ---
+let fontDataCache: ArrayBuffer | null = null;
+// let wasmBufferCache: ArrayBuffer | null = null; // WASM は直接インポートするため不要
+let wasmInitialized = false;
+
+const FONT_KEY = 'assets/NotoSansJP-Regular.ttf';
+// const WASM_KEY = 'vender/resvg.wasm'; // R2 からは読み込まない
+
+// ★★★ フォントのみを読み込むように修正 ★★★
+async function loadFont(r2Bucket: R2Bucket): Promise<ArrayBuffer> {
+  // フォントデータの読み込みとキャッシュ
+  if (!fontDataCache) {
+    console.log(`Fetching font from R2: ${FONT_KEY}`);
+    const fontObject = await r2Bucket.get(FONT_KEY);
+    if (!fontObject) {
+      throw new Error(`Font file not found in R2: ${FONT_KEY}`);
+    }
+    fontDataCache = await fontObject.arrayBuffer();
+    console.log('Font data loaded and cached.');
+  }
+
+  // キャッシュされたデータを返す
+  if (!fontDataCache) {
+    throw new Error('Failed to load font data from cache.');
+  }
+
+  return fontDataCache;
+}
+
 
 /**
  * 指定されたURLからメタデータ(タイトル、著者)を抽出する
@@ -18,26 +48,18 @@ export async function fetchMetadata(url: string): Promise<{ title: string; autho
     const html = await response.text();
 
     // 正規表現またはDOMパーサーライブラリを使ってメタタグを抽出
-    // ここでは簡単な正規表現の例 (堅牢性は低い)
     const titleMatch = html.match(/<meta\s+property="og:title"\s+content="([^"]+)"\s*\/?>/i);
-    // Zennの記事では description に著者名が入っていることが多い
-    const authorMatch = html.match(/<meta\s+name="description"\s+content="([^"]+)"\s*\/?>/i);
+    // <meta content="haru067さんによる記事" name="zenn:description"/>
+    const authorMatch = html.match(/<meta\s+content="([^"]+)さんによる記事"\s+name="zenn:description"\s*\/?>/i);
 
     let title = titleMatch ? titleMatch[1] : 'タイトル不明';
     let author = authorMatch ? authorMatch[1] : '著者不明';
 
-    // zenn:description が存在すればそちらを優先 (より確実な著者名)
-    const zennDescMatch = html.match(/<meta\s+name="zenn:description"\s+content="([^"]+)"\s*\/?>/i);
+    const zennDescMatch = html.match(/<meta\s+name="zenn:description"\s+content="([^"]+)さんによる記事"\s*\/?>/i);
     if (zennDescMatch) {
       author = zennDescMatch[1];
     }
 
-    // HTMLエンティティをデコードする必要がある場合がある
-    // 例: import { decode } from 'html-entities';
-    // title = decode(title);
-    // author = decode(author);
-
-    // XSS対策: 簡単なサニタイズ (より堅牢なライブラリ推奨)
     const sanitize = (str: string) => str.replace(/</g, '<').replace(/>/g, '>');
 
     return {
@@ -58,15 +80,26 @@ export async function fetchMetadata(url: string): Promise<{ title: string; autho
  * @param quote 引用文
  * @param title 記事タイトル
  * @param author 著者名
- * @param fontData フォントファイルの ArrayBuffer
+ * @param r2Bucket R2 バケットオブジェクト (フォント読み込み用)
  * @returns PNG画像のUint8Array
  */
 export async function generateOgpImage(
   quote: string,
   title: string,
   author: string,
-  fontData: ArrayBuffer // フォントデータを引数で受け取る
+  r2Bucket: R2Bucket
 ): Promise<Uint8Array> {
+  // R2 からフォントデータを読み込む
+  const fontData = await loadFont(r2Bucket); // ★★★ フォントのみ読み込み ★★★
+
+  // WASM の初期化 (初回のみ実行)
+  if (!wasmInitialized) {
+    console.log('Initializing Resvg WASM...');
+    // ★★★ インポートした WASM モジュールで初期化 ★★★
+    await initWasm(wasmModule);
+    wasmInitialized = true;
+    console.log('Resvg WASM initialized.');
+  }
 
   // SatoriでSVGを生成
   const svg = await satori(
@@ -77,14 +110,14 @@ export async function generateOgpImage(
         style: {
           display: 'flex',
           flexDirection: 'column',
-          justifyContent: 'space-between', // 上下に要素を配置
+          justifyContent: 'space-between',
           width: 1200,
-          height: 630,
-          padding: '60px', // パディング調整
-          backgroundColor: '#f8f8f8', // 背景色変更
-          border: '1px solid #e0e0e0', // 枠線調整
-          borderRadius: '10px', // 角丸
-          fontFamily: '"Noto Sans JP"', // フォント名を指定
+          height: 1200, // 630,
+          padding: '60px',
+          backgroundColor: '#f8f8f8',
+          border: '1px solid #e0e0e0',
+          borderRadius: '10px',
+          fontFamily: '"Noto Sans JP"',
         },
         children: [
           // 上部: 引用文
@@ -92,17 +125,16 @@ export async function generateOgpImage(
             type: 'div',
             props: {
               style: {
-                fontSize: '48px', // フォントサイズ調整
-                color: '#333', // 文字色調整
-                lineHeight: 1.6, // 行間調整
-                marginBottom: '40px', // マージン調整
-                // テキストの折り返しや省略設定
+                fontSize: '48px',
+                color: '#333',
+                lineHeight: 1.6,
+                marginBottom: '40px',
                 overflow: 'hidden',
                 display: '-webkit-box',
                 webkitBoxOrient: 'vertical',
-                webkitLineClamp: 5, // 最大5行まで表示
+                webkitLineClamp: 5,
               },
-              children: `“${quote}”`, // 引用符で囲む
+              children: `“${quote}”`,
             },
           },
           // 下部: タイトルと著者
@@ -112,20 +144,19 @@ export async function generateOgpImage(
               style: {
                 display: 'flex',
                 flexDirection: 'column',
-                alignItems: 'flex-end', // 右寄せ
-                borderTop: '1px solid #eee', // 区切り線
-                paddingTop: '30px', // 区切り線とのスペース
+                alignItems: 'flex-end',
+                borderTop: '1px solid #eee',
+                paddingTop: '30px',
               },
               children: [
                 {
                   type: 'div',
                   props: {
                     style: {
-                      fontSize: '40px', // フォントサイズ調整
+                      fontSize: '40px',
                       fontWeight: 'bold',
-                      color: '#111', // 文字色調整
-                      marginBottom: '15px', // マージン調整
-                      // 長いタイトル用の省略設定
+                      color: '#111',
+                      marginBottom: '15px',
                       maxWidth: '100%',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
@@ -138,8 +169,8 @@ export async function generateOgpImage(
                   type: 'div',
                   props: {
                     style: {
-                      fontSize: '32px', // フォントサイズ調整
-                      color: '#666', // 文字色調整
+                      fontSize: '32px',
+                      color: '#666',
                     },
                     children: `by ${author}`,
                   },
@@ -156,25 +187,17 @@ export async function generateOgpImage(
       height: 630,
       fonts: [
         {
-          name: 'Noto Sans JP', // JSX内のfontFamilyと一致させる
-          data: fontData, // 読み込んだフォントデータ
+          name: 'Noto Sans JP',
+          data: fontData,
           weight: 400,
           style: 'normal',
         },
-        // 必要に応じて他のウェイトやスタイルも追加
-        // { name: 'Noto Sans JP', data: fontBoldData, weight: 700, style: 'normal' },
       ],
     }
   );
 
   // ResvgでPNGに変換
-  const resvg = new Resvg(svg, {
-    // Resvgの設定 (必要に応じて)
-    // fitTo: {
-    //   mode: 'width',
-    //   value: 1200,
-    // },
-  });
+  const resvg = new Resvg(svg, {});
   const pngData = resvg.render();
   const pngBuffer = pngData.asPng();
 

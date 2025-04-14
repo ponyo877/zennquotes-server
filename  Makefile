@@ -1,0 +1,19 @@
+.PHONY: dev
+dev:
+	pnpm dev
+
+.PHONY: deploy
+deploy:
+	npx wrangler deploy
+
+.PHONY: create-db
+create-db:
+	npx wrangler d1 create zennquotes-db
+
+.PHONY: init-db
+init-db:
+	npx wrangler d1 execute zennquotes-db --file=./storage/schema.sql --remote
+
+.PHONY: init-db-local
+init-db-local:
+	npx wrangler d1 execute zennquotes-db --file=./storage/schema.sql --local

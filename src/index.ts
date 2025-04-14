@@ -1,5 +1,4 @@
-// wrangler.jsonc の rules で設定した Data 型としてインポート
-import fontRegular from '../assets/NotoSansJP-Regular.ttf';
+// フォントは動的に読み込むためインポートを削除
 
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
@@ -20,15 +19,16 @@ interface QuoteLink {
   quote: string;
   title: string;
   author: string;
-  originalUrl: string; // 元記事のURL (Text Fragment 付き)
-  ogpImageUrl: string; // R2に保存した画像のURL
-  createdAt: number; // Unix timestamp (ms)
+  original_url: string; // 元記事のURL (Text Fragment 付き)
+  ogp_image_url: string; // R2に保存した画像のURL
+  created_at: number; // Unix timestamp (ms)
 }
 
 // Cloudflare 環境の型定義 (R2, D1 バインディング用)
 type Bindings = {
   R2_BUCKET: R2Bucket;
   D1_DB: D1Database;
+  R2_BUCKET_PUBLIC_URL?: string; // R2 公開 URL (環境変数)
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -82,15 +82,18 @@ app.post(
       const { title, author } = await fetchMetadata(originalUrlInput);
 
       // 2. OGP画像生成
-      // fontRegular は ArrayBuffer としてインポートされる
-      const pngBuffer = await generateOgpImage(quote, title, author, fontRegular);
+      // generateOgpImage に R2 バケットを渡してフォントと WASM を読み込ませる
+      const pngBuffer = await generateOgpImage(quote, title, author, c.env.R2_BUCKET);
 
       // 3. R2に保存
       const r2Key = `ogp/${id}.png`;
-      // TODO: R2へのアップロード処理を実装 (c.env.R2_BUCKET.put)
-      // await c.env.R2_BUCKET.put(r2Key, pngBuffer);
-      // TODO: R2の公開URLを取得または構築する (要設定 or 固定URL)
-      const ogpImageUrl = `https://your-r2-public-url.example.com/${r2Key}`; // ダミーURL
+      // R2 へのアップロード処理
+      await c.env.R2_BUCKET.put(r2Key, pngBuffer, {
+        httpMetadata: { contentType: 'image/png' }, // Content-Type を設定
+      });
+      console.log(`Image uploaded to R2: ${r2Key}`);
+      // R2 の公開 URL を構築 (カスタムドメインを使用)
+      const ogpImageUrl = `https://${c.env.R2_BUCKET_PUBLIC_URL || 'zennq-img.folks-chat.com'}/${r2Key}`; // 環境変数または直接指定
 
       // 4. Text Fragment 付き URL の生成
       const originalUrlWithFragment = `${originalUrlInput}#:~:text=${encodeURIComponent(quote)}`;
@@ -102,20 +105,27 @@ app.post(
         quote,
         title,
         author,
-        originalUrl: originalUrlWithFragment,
-        ogpImageUrl, // R2のURL
-        createdAt,
+        original_url: originalUrlWithFragment,
+        ogp_image_url: ogpImageUrl, // R2のURL
+        created_at: createdAt,
       };
-      // TODO: D1への保存処理を実装 (c.env.D1_DB.prepare)
-      // const stmt = c.env.D1_DB.prepare(
-      //   'INSERT INTO QuoteLinks (id, quote, title, author, originalUrl, ogpImageUrl, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)'
-      // );
-      // await stmt.bind(id, quote, title, author, originalUrlWithFragment, ogpImageUrl, createdAt).run();
-
-      console.log('Generated OGP:', dataToSave);
+      // D1 への保存処理 (テーブル名を修正)
+      const stmt = c.env.D1_DB.prepare(
+        'INSERT INTO quote_links (id, quote, title, author, original_url, ogp_image_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      );
+      await stmt.bind(
+        dataToSave.id,
+        dataToSave.quote,
+        dataToSave.title,
+        dataToSave.author,
+        dataToSave.original_url,
+        dataToSave.ogp_image_url,
+        dataToSave.created_at
+      ).run();
+      console.log('Data saved to D1:', dataToSave);
 
       // 6. レスポンス (設計通り ogpImageUrl を返す)
-      return c.json({ ogpImageUrl });
+      return c.json({ id, ogpImageUrl });
 
     } catch (error) {
       console.error('Error processing /api/ogp:', error);
@@ -128,28 +138,19 @@ app.post(
 app.get('/:id', async (c) => {
   const id = c.req.param('id');
 
+  // ★★★ id が "undefined" という文字列の場合はすぐに 404 を返す ★★★
+  if (id === 'undefined') {
+    console.log('Received request with ID "undefined", returning 404.');
+    return c.text('Not Found', 404);
+  }
+
   try {
-    // TODO: D1から情報を取得する処理を実装
-    // const stmt = c.env.D1_DB.prepare('SELECT * FROM QuoteLinks WHERE id = ?');
-    // const data = await stmt.bind(id).first<QuoteLink>();
-
-    // --- ダミーデータここから ---
-    const data: QuoteLink | null = { // ダミーデータ (取得成功時)
-      id: id,
-      quote: `引用文のダミー (${id})`,
-      title: `ダミー記事タイトル (${id})`,
-      author: 'ダミー著者',
-      originalUrl: `https://zenn.dev/dummy/articles/abcdef123456#:~:text=${encodeURIComponent(
-        `引用文のダミー (${id})`
-      )}`,
-      ogpImageUrl: `https://your-r2-public-url.example.com/ogp/${id}.png`, // ダミー画像URL
-      createdAt: Date.now(),
-    };
-    // const data: QuoteLink | null = null; // ダミーデータ (取得失敗時)
-    // --- ダミーデータここまで ---
-
+    // D1 から情報を取得する処理 (テーブル名を修正)
+    const stmt = c.env.D1_DB.prepare('SELECT * FROM quote_links WHERE id = ?');
+    const data = await stmt.bind(id).first<QuoteLink>();
 
     if (!data) {
+      console.log(`Data not found for ID: ${id}`);
       return c.text('Not Found', 404);
     }
 
@@ -165,17 +166,17 @@ app.get('/:id', async (c) => {
   <title>${data.title}</title>
   <meta property="og:title" content="${data.title}" />
   <meta property="og:description" content="${data.quote}" />
-  <meta property="og:image" content="${data.ogpImageUrl}" />
-  <meta property="og:url" content="${data.originalUrl}" />
+  <meta property="og:image" content="${data.ogp_image_url}" />
+  <meta property="og:url" content="${data.original_url}" />
   <meta property="og:type" content="article" />
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="${data.title}">
   <meta name="twitter:description" content="${data.quote}">
-  <meta name="twitter:image" content="${data.ogpImageUrl}">
-  <meta http-equiv="refresh" content="0; url=${data.originalUrl}" />
+  <meta name="twitter:image" content="${data.ogp_image_url}">
+  <meta http-equiv="refresh" content="0; url=${data.original_url}" />
 </head>
 <body>
-  <p>Redirecting to <a href="${data.originalUrl}">${data.originalUrl}</a>...</p>
+  <p>Redirecting to <a href="${data.original_url}">${data.original_url}</a>...</p>
 </body>
 </html>
   `;
@@ -187,5 +188,10 @@ app.get('/:id', async (c) => {
     return c.text('Internal Server Error', 500);
   }
 });
+
+// favicon.ico へのリクエストを無視する (204 No Content)
+app.get('/favicon.ico', (c) => c.newResponse(null, 204));
+
+app.get('/', (c) => c.text('Hello Zenn Quotes!'))
 
 export default app;

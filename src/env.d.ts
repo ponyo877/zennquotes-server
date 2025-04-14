@@ -4,6 +4,12 @@ declare module '*.ttf' {
   export default content;
 }
 
+// .wasm ファイルを WebAssembly.Module としてインポートできるようにする型定義
+declare module '*.wasm' {
+  const content: WebAssembly.Module;
+  export default content;
+}
+
 // Cloudflare Bindings の型定義 (必要に応じて拡張)
 // wrangler.jsonc で設定したバインディングをここに記述すると
 // c.env からアクセスする際に型補完が効くようになります。
