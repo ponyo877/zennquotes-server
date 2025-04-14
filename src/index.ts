@@ -5,6 +5,17 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { fetchMetadata, generateOgpImage } from './ogp/generator'; // OGP生成関数をインポート
 
+// --- Helper: 7桁のランダム英数字ID生成 ---
+function generateShortId(length = 7): string {
+  const characters = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  const charactersLength = characters.length;
+  for (let i = 0; i < length; i++) {
+    result += characters.charAt(Math.floor(Math.random() * charactersLength));
+  }
+  return result;
+}
+
 // バリデーションスキーマ
 const OgpRequestSchema = z.object({
   quote: z.string().max(200, 'Quote must be 200 characters or less'),
@@ -75,7 +86,7 @@ app.post(
   zValidator('json', OgpRequestSchema), // バリデーションミドルウェア
   async (c) => {
     const { quote, url: originalUrlInput } = c.req.valid('json');
-    const id = crypto.randomUUID(); // UUIDを生成
+    const id = generateShortId(); // ★★★ 7桁の短いIDを生成 ★★★
 
     try {
       // 1. メタデータ取得
