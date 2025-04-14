@@ -32,6 +32,7 @@ interface QuoteLink {
   author: string;
   original_url: string; // 元記事のURL (Text Fragment 付き)
   ogp_image_url: string; // R2に保存した画像のURL
+  author_avatar_url?: string | null; // ★★★ 著者アイコン URL (オプショナル) ★★★
   created_at: number; // Unix timestamp (ms)
 }
 
@@ -89,12 +90,11 @@ app.post(
     const id = generateShortId(); // ★★★ 7桁の短いIDを生成 ★★★
 
     try {
-      // 1. メタデータ取得
-      const { title, author } = await fetchMetadata(originalUrlInput);
+      // 1. メタデータ取得 (authorAvatarUrl も取得)
+      const { title, author, authorAvatarUrl } = await fetchMetadata(originalUrlInput);
 
-      // 2. OGP画像生成
-      // generateOgpImage に R2 バケットを渡してフォントと WASM を読み込ませる
-      const pngBuffer = await generateOgpImage(quote, title, author, c.env.R2_BUCKET);
+      // 2. OGP画像生成 (authorAvatarUrl を渡す)
+      const pngBuffer = await generateOgpImage(quote, title, author, authorAvatarUrl, c.env.R2_BUCKET);
 
       // 3. R2に保存
       const r2Key = `ogp/${id}.png`;
@@ -118,11 +118,12 @@ app.post(
         author,
         original_url: originalUrlWithFragment,
         ogp_image_url: ogpImageUrl, // R2のURL
+        author_avatar_url: authorAvatarUrl, // ★★★ アイコン URL を追加 ★★★
         created_at: createdAt,
       };
-      // D1 への保存処理 (テーブル名を修正)
+      // D1 への保存処理 (カラムとプレースホルダを追加)
       const stmt = c.env.D1_DB.prepare(
-        'INSERT INTO quote_links (id, quote, title, author, original_url, ogp_image_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO quote_links (id, quote, title, author, original_url, ogp_image_url, author_avatar_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
       );
       await stmt.bind(
         dataToSave.id,
@@ -131,6 +132,7 @@ app.post(
         dataToSave.author,
         dataToSave.original_url,
         dataToSave.ogp_image_url,
+        dataToSave.author_avatar_url, // ★★★ バインドする値を追加 ★★★
         dataToSave.created_at
       ).run();
       console.log('Data saved to D1:', dataToSave);
@@ -156,8 +158,9 @@ app.get('/:id', async (c) => {
   }
 
   try {
-    // D1 から情報を取得する処理 (テーブル名を修正)
-    const stmt = c.env.D1_DB.prepare('SELECT * FROM quote_links WHERE id = ?');
+    // D1 から情報を取得する処理 (テーブル名を修正, author_avatar_url も取得)
+    // ★★★ SELECT 文に author_avatar_url を追加 ★★★
+    const stmt = c.env.D1_DB.prepare('SELECT id, quote, title, author, original_url, ogp_image_url, author_avatar_url, created_at FROM quote_links WHERE id = ?');
     const data = await stmt.bind(id).first<QuoteLink>();
 
     if (!data) {

@@ -10,13 +10,14 @@
 -- }
 
 CREATE TABLE IF NOT EXISTS quote_links (
-  id            TEXT    PRIMARY KEY,
-  quote         TEXT    NOT NULL,
-  title         TEXT    NOT NULL,
-  author        TEXT    NOT NULL,
-  original_url  TEXT    NOT NULL,
-  ogp_image_url TEXT    NOT NULL,
-  created_at    INTEGER NOT NULL
+  id                TEXT    PRIMARY KEY,
+  quote             TEXT    NOT NULL,
+  title             TEXT    NOT NULL,
+  author            TEXT    NOT NULL,
+  original_url      TEXT    NOT NULL,
+  ogp_image_url     TEXT    NOT NULL,
+  author_avatar_url TEXT, -- ★★★ 著者アイコン URL カラムを追加 (NULL許容) ★★★
+  created_at        INTEGER NOT NULL
 );
 
 CREATE INDEX idx_created_at ON quote_links (created_at DESC);
