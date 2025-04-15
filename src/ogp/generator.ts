@@ -211,23 +211,81 @@ export async function generateOgpImage(
                             overflow: 'hidden', // ★★★ overflow は残す ★★★
                           },
                           children: [
+                            // ★★★ 開始クォーテーション (コンテナでラップ) ★★★
+                            {
+                              type: 'div', // コンテナ追加
+                              props: {
+                                style: {
+                                  height: `${quoteFontSize * 5 * 0.55}px`, // フォントサイズの大体半分強の高さ
+                                  overflow: 'hidden', // はみ出した部分を隠す
+                                  display: 'flex', // 中身をflex配置 (垂直位置調整のため)
+                                  alignItems: 'flex-start', // 上揃え
+                                  alignSelf: 'flex-start', // 右寄せ
+                                  marginBottom: '-10px', // 位置調整
+                                  marginLeft: '5%', // 右端からのマージン調整
+                                },
+                                children: [
+                                  {
+                                    type: 'div', // 元のクォーテーション要素
+                                    props: {
+                                      style: {
+                                        fontSize: `${quoteFontSize * 5}px`,
+                                        color: '#a0aec0',
+                                        lineHeight: 1, // コンテナ内で詰める
+                                        fontFamily: '"Noto Serif JP"',
+                                        opacity: 0.8,
+                                      },
+                                      children: '“',
+                                    },
+                                  },
+                                ],
+                              },
+                            },
                             // 引用文テキスト
                             {
                               type: 'div',
                               props: {
                                 style: {
-                                  // ★★★ 動的なフォントサイズを適用 ★★★
                                   fontSize: `${quoteFontSize}px`,
                                   fontWeight: 'bold',
                                   color: '#4a5568',
                                   lineHeight: 1.7,
                                   textAlign: 'center',
                                   fontFamily: '"Noto Serif JP"',
-                                  // ★★★ maxHeight と overflow は削除 ★★★
-                                  // maxHeight: '320px',
-                                  // overflow: 'hidden',
+                                  maxWidth: '90%', // 横幅制限
+                                  margin: '0 20px', // 左右マージン
                                 },
                                 children: quote,
+                              },
+                            },
+                            // ★★★ 終了クォーテーション (コンテナでラップ) ★★★
+                            {
+                              type: 'div', // コンテナ追加
+                              props: {
+                                style: {
+                                  height: `${quoteFontSize * 5 * 0.55}px`, // フォントサイズの大体半分強の高さ
+                                  overflow: 'hidden', // はみ出した部分を隠す
+                                  display: 'flex', // 中身をflex配置
+                                  alignItems: 'flex-start', // 上揃え
+                                  alignSelf: 'flex-end', // 右寄せ
+                                  marginTop: '-10px', // 位置調整
+                                  marginRight: '5%', // 右端からのマージン調整
+                                },
+                                children: [
+                                  {
+                                    type: 'div', // 元のクォーテーション要素
+                                    props: {
+                                      style: {
+                                        fontSize: `${quoteFontSize * 5}px`,
+                                        color: '#a0aec0',
+                                        lineHeight: 1, // コンテナ内で詰める
+                                        fontFamily: '"Noto Serif JP"',
+                                        opacity: 0.8,
+                                      },
+                                      children: '”',
+                                    },
+                                  },
+                                ],
                               },
                             },
                           ],
