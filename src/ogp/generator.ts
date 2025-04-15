@@ -104,7 +104,7 @@ export async function fetchMetadata(url: string): Promise<{ title: string; autho
   }
 }
 
-// ★★★ フォントサイズ計算ヘルパー ★★★
+// ★★★ フォントサイズ計算ヘルパー (最終調整版) ★★★
 function calculateFontSize(textLength: number): number {
   const maxLength = 200; // 引用文の最大文字数
   const minLengthThreshold = 50; // この文字数以下なら最大サイズ
@@ -208,7 +208,8 @@ export async function generateOgpImage(
                             justifyContent: 'center',
                             alignItems: 'center',
                             flexGrow: 1,
-                            overflow: 'hidden', // ★★★ overflow は残す ★★★
+                            overflow: 'hidden', // ★★★ overflow を再追加 ★★★
+                            maxHeight: '400px', // ★★★ 最大高さを設定 ★★★
                           },
                           children: [
                             // ★★★ 開始クォーテーション (コンテナでラップ) ★★★
@@ -216,7 +217,7 @@ export async function generateOgpImage(
                               type: 'div', // コンテナ追加
                               props: {
                                 style: {
-                                  height: `${quoteFontSize * 5 * 0.55}px`, // フォントサイズの大体半分強の高さ
+                                  height: `${quoteFontSize * 3 * 0.45}px`, // ★★★ 1.5 -> 5 に戻し、高さを再計算 ★★★
                                   overflow: 'hidden', // はみ出した部分を隠す
                                   display: 'flex', // 中身をflex配置 (垂直位置調整のため)
                                   alignItems: 'flex-start', // 上揃え
@@ -229,7 +230,7 @@ export async function generateOgpImage(
                                     type: 'div', // 元のクォーテーション要素
                                     props: {
                                       style: {
-                                        fontSize: `${quoteFontSize * 5}px`,
+                                        fontSize: `${quoteFontSize * 3}px`, // ★★★ 1.5 -> 5 に戻す ★★★
                                         color: '#a0aec0',
                                         lineHeight: 1, // コンテナ内で詰める
                                         fontFamily: '"Noto Serif JP"',
@@ -248,7 +249,7 @@ export async function generateOgpImage(
                                 style: {
                                   fontSize: `${quoteFontSize}px`,
                                   fontWeight: 'bold',
-                                  color: '#4a5568',
+                                  color: '#000000', // 元の色に戻す
                                   lineHeight: 1.7,
                                   textAlign: 'center',
                                   fontFamily: '"Noto Serif JP"',
@@ -263,7 +264,7 @@ export async function generateOgpImage(
                               type: 'div', // コンテナ追加
                               props: {
                                 style: {
-                                  height: `${quoteFontSize * 5 * 0.55}px`, // フォントサイズの大体半分強の高さ
+                                  height: `${quoteFontSize * 3 * 0.45}px`, // ★★★ 1.5 -> 5 に戻し、高さを再計算 ★★★
                                   overflow: 'hidden', // はみ出した部分を隠す
                                   display: 'flex', // 中身をflex配置
                                   alignItems: 'flex-start', // 上揃え
@@ -276,7 +277,7 @@ export async function generateOgpImage(
                                     type: 'div', // 元のクォーテーション要素
                                     props: {
                                       style: {
-                                        fontSize: `${quoteFontSize * 5}px`,
+                                        fontSize: `${quoteFontSize * 3}px`, // ★★★ 1.5 -> 5 に戻す ★★★
                                         color: '#a0aec0',
                                         lineHeight: 1, // コンテナ内で詰める
                                         fontFamily: '"Noto Serif JP"',
