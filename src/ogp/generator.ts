@@ -345,8 +345,17 @@ export async function generateOgpImage(
                                 style: { display: 'flex', alignItems: 'center', fontFamily: '"Inter"' },
                                 children: [
                                   {
-                                    type: 'div',
-                                    props: { style: { fontSize: '30px', fontWeight: 'bold', color: '#3ea8ff', marginRight: '8px', transform: 'scaleY(0.8) translateY(-2px)' }, children: '❝' },
+                                    type: 'img',
+                                    props: {
+                                      // src: '/assets/icon-34.png', // 元のパス - Satori はローカルパスを解決できません
+                                      src: 'https://zennq-img.folks-chat.com/assets/icon-34.png', // CDN からのパス
+                                      alt: 'zennquotes logo',
+                                      style: {
+                                        height: '30px',
+                                        marginRight: '8px',
+                                        objectFit: 'contain'
+                                      }
+                                    },
                                   },
                                   {
                                     type: 'div',
