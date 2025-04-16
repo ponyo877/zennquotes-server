@@ -248,11 +248,11 @@ export async function generateOgpImage(
                               props: {
                                 style: {
                                   fontSize: `${quoteFontSize}px`,
-                                  fontWeight: 'bold',
-                                  color: '#000000', // 元の色に戻す
-                                  lineHeight: 1.7,
-                                  textAlign: 'center',
-                                  fontFamily: '"Noto Serif JP"',
+                                   fontWeight: 'bold',
+                                   color: '#000000', // 元の色に戻す
+                                   lineHeight: 1.6, // 1.7 から 1.6 に変更
+                                   textAlign: 'center',
+                                   fontFamily: '"Noto Serif JP"',
                                   maxWidth: '90%', // 横幅制限
                                   margin: '0 20px', // 左右マージン
                                 },
